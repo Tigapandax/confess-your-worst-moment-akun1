@@ -1,32 +1,40 @@
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const MAX_CHARS = 200;
+// Confess Your Worst Moment: one line, at most 200 characters.
+// The program validates the confession and writes it to /output/entry.txt,
+// where the sealed scorer reads it. Printing to stdout alone scores Valid 0.
 
-const raw = readFileSync(new URL("./one-line.txt", import.meta.url), "utf8");
-const line = raw.replace(/\n$/, "");
+function loadLine(): string {
+  const text = readFileSync(new URL("./one-line.txt", import.meta.url), "utf8");
+  return text.endsWith("\n") ? text.slice(0, -1) : text;
+}
 
-const failures: string[] = [];
-if (line.length === 0) failures.push("empty line");
-if ([...line].length > MAX_CHARS) failures.push(`too long: ${[...line].length}/${MAX_CHARS} characters`);
-if (line !== line.trim()) failures.push("leading or trailing whitespace");
-if (line.includes("\r")) failures.push("carriage return found");
-if (line.includes("\n")) failures.push("more than one line");
-if (/\s{2,}/.test(line)) failures.push("double space inside the line");
-if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(line)) failures.push("control character inside the line");
-const quotes = (line.match(/"/g) || []).length;
-if (quotes % 2 !== 0) failures.push("unbalanced double quotes");
-if (!/\s/.test(line)) failures.push("a confession needs more than one word");
-if (!/[.!?]["']?$/.test(line)) failures.push("must end with terminal punctuation");
+function problems(line: string): string[] {
+  const found: string[] = [];
+  const chars = [...line];
+  if (chars.length < 1) found.push("the confession is empty");
+  if (chars.length > 200) found.push(`the confession is ${chars.length} characters, over the 200 limit`);
+  if (line.trim() !== line) found.push("the line has leading or trailing whitespace");
+  if (line.includes("\n") || line.includes("\r")) found.push("the confession must be exactly one line");
+  if (/\s\s/.test(line)) found.push("the line has a double space");
+  if (/[^\x20-\x7E]/.test(line)) found.push("the line has a non-printable character");
+  if (!/[.!?]$/.test(line)) found.push("the confession must end with . ! or ?");
+  if (!line.includes(" ")) found.push("the confession is a single word");
+  const quoteCount = line.split('"').length - 1;
+  if (quoteCount % 2 !== 0) found.push("the confession has an unbalanced double quote");
+  return found;
+}
 
-if (failures.length > 0) {
-  for (const f of failures) console.error(`FAIL: ${f}`);
+const line = loadLine();
+const bad = problems(line);
+if (bad.length > 0) {
+  for (const p of bad) console.error("invalid entry: " + p);
   process.exit(1);
 }
 
-const outputDir = process.env.MAKEFUN_OUTPUT_DIR || "/output";
-mkdirSync(outputDir, { recursive: true });
-writeFileSync(join(outputDir, "entry.txt"), line + "\n");
-
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+mkdirSync(outDir, { recursive: true });
+writeFileSync(join(outDir, "entry.txt"), line + "\n");
 console.log(line);
-console.log(`OK: ${[...line].length}/${MAX_CHARS} characters, single line, confession delivered.`);
+console.log(`confession written: ${[...line].length}/200 characters`);
